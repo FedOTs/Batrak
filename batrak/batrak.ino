@@ -1,7 +1,5 @@
 #include <Servo.h>
 
-#include <SPI.h>
-#include <Wire.h>
 #include <PS2X_lib.h>
 
 #define SERV1       2
@@ -10,6 +8,12 @@
 #define SERVO_CENTER  90
 #define SERVO_MAX  180 
 #define SERVO_MIN  0 
+
+
+//Шаговый мотор
+#define STEP_PUL_EN 22
+#define STEP_DIR 14
+#define STEP_ENA 16
 
 //Выводы джойстика
 #define PS2_DAT        A11
@@ -32,6 +36,7 @@
 
 Servo myservo1;
 Servo myservo2;
+
 //Создание класса для джойстика
 PS2X ps2x;
 int error = 0;
@@ -40,8 +45,16 @@ byte vibrate = 0;
 
 unsigned long time_standstill, time_pause, time_standstill_long;
 unsigned int cntServ1,cntServ2; 
+int stWheelDir, stWheelMove;
 
 void setup() { 
+  pinMode (STEP_PUL_EN, OUTPUT);
+  pinMode (STEP_DIR, OUTPUT);
+  pinMode (STEP_ENA, OUTPUT);
+  digitalWrite(STEP_PUL_EN, HIGH);
+  digitalWrite(STEP_DIR, HIGH);
+  digitalWrite(STEP_ENA, LOW);
+  
   //установка выводов и настроек: GamePad(clock, command, attention, data, Pressures?, Rumble?) проверка ошибок
   error = ps2x.config_gamepad(PS2_CLK, PS2_CMD, PS2_SEL, PS2_DAT, pressures, rumble);
   Serial.begin(9600);
@@ -49,7 +62,7 @@ void setup() {
   myservo1.attach(SERV1);
   myservo2.attach(SERV2);
   ServCenter();
-  time_standstill = millis(); //запомнить время последнего действия
+  time_standstill = millis();
 }
 
 void loop()
@@ -57,13 +70,28 @@ void loop()
   //Опрос джойстика
   ps2x.read_gamepad(false, vibrate); //считывание данных с джойстика и установка скорости вибрации
 
+      if (ps2x.Button(PSB_PAD_RIGHT) || ps2x.Button(PSB_PAD_LEFT))
+      {
+        if (ps2x.Button(PSB_PAD_RIGHT)) 
+        {
+            StepRun(1, true);
+            time_standstill = millis();
+        }
+        else if (ps2x.Button(PSB_PAD_LEFT)) 
+        {     
+            StepRun(-1, true);
+            time_standstill = millis();
+        }
+      }
 
+  
   // Треугольник нажат (ковш вверх)
   if (ps2x.Button(PSB_TRIANGLE))
   {
     Serial.println("TRIANGLE");
     Serial.println(cntServ1);
     Serial.println(cntServ2);
+    time_standstill = millis();
     if (cntServ1 > SERVO_MIN && cntServ1 < SERVO_MAX) 
     {
        myservo1.write(cntServ1);
@@ -83,6 +111,7 @@ void loop()
     Serial.println("CROSS");
     Serial.println(cntServ1);
     Serial.println(cntServ2);
+    time_standstill = millis();
     if (cntServ1+1 > SERVO_MIN && cntServ1-1 < SERVO_MAX) 
     {
        myservo1.write(cntServ1);
@@ -94,7 +123,27 @@ void loop()
        cntServ2++;
     }
   }
-   delay(10);  
+   // Крестовина отпущена и не запущен режим калибровки
+      if ((ps2x.Button(PSB_PAD_UP) == false) & (ps2x.Button(PSB_PAD_DOWN) == false) &
+          (ps2x.Button(PSB_PAD_LEFT) == false) & (ps2x.Button(PSB_PAD_RIGHT) == false)){
+
+        StepRun(0, false);
+
+        //не нажата ни одна кнопка действия
+        if ((ps2x.Button(PSB_TRIANGLE) == false) & (ps2x.Button(PSB_CROSS) == false) &
+            (ps2x.Button(PSB_CIRCLE) == false) & (ps2x.Button(PSB_SQUARE) == false))
+        {
+
+          if (millis() - time_standstill >= TIME_STANDSTILL_MAX)  //бездействие
+          {
+
+            if (millis() - time_standstill_long >= TIME_STANDSTILLLONG_MAX) //напоминание о бездействии
+            {
+              time_standstill_long = millis();
+            }
+          }
+        }
+      }
 }
 
 void PrintError(int error) {
@@ -130,6 +179,23 @@ void ServCenter()
   myservo2.write(SERVO_CENTER);
   cntServ1 = SERVO_CENTER;
   cntServ2 = SERVO_CENTER;
+}
+
+void StepRun(int dir, bool en) {
+  if (en == true) {
+    if (dir > 0) {
+        digitalWrite(STEP_DIR, HIGH);
+        digitalWrite(STEP_ENA, HIGH);
+      }
+    else {
+        digitalWrite(STEP_DIR, LOW);
+        digitalWrite(STEP_ENA, HIGH);
+      }
+  }
+  else {
+    digitalWrite(STEP_DIR, LOW);
+    digitalWrite(STEP_ENA, LOW);
+  }
 }
 
 // define a servo pulse function
