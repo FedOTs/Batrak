@@ -21,14 +21,19 @@
 // Дроссельная заслонка
 #define SERV_THROTTLE_VALVE       9
 
+// Это углы сервы для управления рычагами ковша и стрелы
 #define SERVO_CENTER  90
-#define SERVO_MAX  180 
-#define SERVO_MIN  0 
+#define SERVO_MAX  130 
+#define SERVO_MIN  50 
+
+// Это углы сервы для иных устройств газ, дроссель, вперед, назад
+#define SERVO_MAX_90  180 
+#define SERVO_MIN_90  0 
 
 //Шаговый мотор
-#define STEP_PUL_EN 22
-#define STEP_DIR 14
-#define STEP_ENA 16
+#define STEP_PUL_EN 22   // Дает питание на плату с ШИМ
+#define STEP_DIR 14   // Направление шаговика 
+#define STEP_ENA 16   // Включение шаговика
 
 //Выводы джойстика
 #define PS2_DAT        A11
@@ -37,9 +42,9 @@
 #define PS2_CLK        A14
 
 //Фары, мигалки, звук
-#define PIN_LIGHT        24
-#define PIN_BLINK        25
-#define PIN_SOUND        26
+#define PIN_LIGHT        24  // Фары
+#define PIN_BLINK        52  // Габариты
+#define PIN_SOUND        26  // Звуковой сигнал
 
 //время в миллисекундах
 #define TIME_STANDSTILL_MAX 30000 //через которое робот перейдёт в режим бездействия
@@ -54,17 +59,17 @@
 //#define rumble      true
 #define rumble      false
 
-Servo serv_bucket1;
+Servo serv_bucket1;  // Ковш
 Servo serv_bucket2;
 
-Servo serv_arrow1;
+Servo serv_arrow1; // Стрела
 Servo serv_arrow2;
 
-Servo serv_motor1;
+Servo serv_motor1; //Вперед назад
 Servo serv_motor2;
 
-Servo serv_accel;
-Servo serv_throttle_valve;
+Servo serv_accel;  // Газ
+Servo serv_throttle_valve; // Дроссельная заслонка
 
 //Создание класса для джойстика
 PS2X ps2x;
@@ -73,8 +78,10 @@ byte type = 0;
 byte vibrate = 0;
 
 unsigned long time_standstill, time_pause, time_standstill_long;
-unsigned int cntServ1,cntServ2, cntServ3,cntServ4, cntServ5,cntServ6, cntServ7,cntServ8; 
-int stWheelDir, stWheelMove;
+unsigned int cntServMotor1,cntServMotor2,cntServAccel,cntServThrottleValve; // Счетчики для серв
+int stWheelDir, stWheelMove;  
+int nJoyX, nJoyY;  // Счетчики для аналогов джойстика
+bool fLight, fBlink; // Флаги для хранения состояния фар и габаритов
 
 void setup() { 
   pinMode (STEP_PUL_EN, OUTPUT);
@@ -105,7 +112,8 @@ void setup() {
       Serial.print("Wireless Sony DualShock Controller found ");
       break;
    }
-  
+
+  // Прирепляем пины к экземплярам класса Серво.
   serv_bucket1.attach(SERV_BUCKET1);
   serv_bucket2.attach(SERV_BUCKET2);
   serv_arrow1.attach(SERV_ARROW1);
@@ -114,10 +122,17 @@ void setup() {
   serv_motor2.attach(SERV_MOTOR2);
   serv_accel.attach(SERV_ACCEL);
   serv_throttle_valve.attach(SERV_THROTTLE_VALVE);
-  
+
+  // Центруем сервы (только стрела, ковш и вперед-назад)
   ServCenter();
-  cntServ7 = SERVO_CENTER;
-  cntServ8 = SERVO_CENTER;
+  // Центруем отдельно сервы газа и дросселя
+  cntServAccel = SERVO_CENTER;  
+  cntServThrottleValve = SERVO_CENTER;
+
+  // Выключенные фары и габариты
+  fLight = false;
+  fBlink = false;
+  
   time_standstill = millis();
 }
 
@@ -133,16 +148,6 @@ void loop()
     time_standstill = millis();
     serv_bucket1.write(SERVO_MAX);
     serv_bucket2.write(SERVO_MIN);
-    /*if (cntServ1 < SERVO_MAX-1) 
-    {       
-       serv_bucket1.write(cntServ1);
-       cntServ1++;
-    }
-    if (cntServ2 > SERVO_MIN+1) 
-    {
-       serv_bucket2.write(cntServ2);
-       cntServ2--;
-    }*/
   }
 
 
@@ -153,19 +158,9 @@ void loop()
     time_standstill = millis();
     serv_bucket1.write(SERVO_MIN);
     serv_bucket2.write(SERVO_MAX);
-    /*if (cntServ1 > SERVO_MIN+1) 
-    {
-       serv_bucket1.write(cntServ1);
-       cntServ1--;
-    }
-    if (cntServ2 < SERVO_MAX-1) 
-    {
-       serv_bucket2.write(cntServ2);
-       cntServ2++;
-    }*/
   }
 
-   //Круг нажат (захват)
+   //Круг нажат (стрела верх)
   if (ps2x.Button(PSB_CIRCLE))
   {
     Serial.println("PSB_CIRCLE");
@@ -174,8 +169,7 @@ void loop()
     serv_arrow2.write(SERVO_MIN);
   }
 
-
-   //Квадрат нажат (захват)
+     //Квадрат нажат (стрела вниз)
   if (ps2x.Button(PSB_SQUARE))
   {
     Serial.println("PSB_SQUARE");
@@ -183,118 +177,155 @@ void loop()
     serv_arrow2.write(SERVO_MAX);  
   }
 
-      if (ps2x.Button(PSB_PAD_RIGHT) || ps2x.Button(PSB_PAD_LEFT))
-      {
-        if (ps2x.Button(PSB_PAD_RIGHT)) 
-        {
-            StepRun(1, true);
-            time_standstill = millis();
-        }
-        else if (ps2x.Button(PSB_PAD_LEFT)) 
-        {     
-            StepRun(-1, true);
-            time_standstill = millis();
-        }
-      }
+  // Если нажата L2 только тогда слушаем аналоговый левый джойстик
+  if(ps2x.Button(PSB_L2)) {
 
-      if (ps2x.Button(PSB_PAD_UP) || ps2x.Button(PSB_PAD_DOWN))
-      {
-        if (ps2x.Button(PSB_PAD_UP)) 
-        {
-            time_standstill = millis();
-            if (cntServ1 < SERVO_MAX-1) 
-            {       
-               serv_bucket1.write(cntServ1);
-               cntServ1++;
-            }
-            if (cntServ2 > SERVO_MIN+1) 
-            {
-       serv_bucket2.write(cntServ2);
-       cntServ2--;
-    }
-        }
-        else if (ps2x.Button(PSB_PAD_DOWN)) 
-        {     
-            StepRun(-1, true);
-            time_standstill = millis();
-        }
-      }
+      nJoyX = ps2x.Analog(PSS_LX); // read x-joystick
+      nJoyY = ps2x.Analog(PSS_LY); // read y-joystick
 
-  // ВВЕРХ нажато (движение вперёд)
-  if (ps2x.Button(PSB_PAD_UP)){
-    Serial.println("PSB_PAD_UP");
-    serv_motor1.write(SERVO_MAX);
-    serv_motor2.write(SERVO_MIN);
+      if (nJoyX < 0) 
+        {
+           StepRun(1, true);
+           time_standstill = millis();
+        }
+      if (nJoyX > 0)
+        {
+          StepRun(-1, true);
+          time_standstill = millis();
+        }
+
+     if (nJoyY < 0) {
+        time_standstill = millis();
+        if (cntServMotor1 < SERVO_MAX_90-1) 
+        {       
+           serv_motor1.write(cntServMotor1);
+           cntServMotor1++;
+        }
+        if (cntServMotor2 > SERVO_MIN_90+1) 
+        {
+           serv_motor2.write(cntServMotor2);
+           cntServMotor2--;
+        }
+      } 
+
+      if (nJoyY > 0) {
+        time_standstill = millis();
+        if (cntServMotor2 < SERVO_MAX_90-1) 
+        {       
+           serv_bucket2.write(cntServMotor2);
+           cntServMotor2++;
+        }
+        if (cntServMotor1 > SERVO_MIN_90+1) 
+        {
+           serv_bucket1.write(cntServMotor1);
+           cntServMotor1--;
+        }
+      } 
   }
-
- //ВНИЗ нажато (движение назад)
+  
+ // Газ увеличиваем
+  if (ps2x.Button(PSB_PAD_UP))
+    {
+    Serial.println("PSB_PAD_UP");
+    Serial.println(cntServAccel);
+    time_standstill = millis();
+    if (cntServAccel < SERVO_MAX_90-1) 
+    {       
+       serv_accel.write(cntServAccel);
+       cntServAccel++;
+    }
+  }
+ // Газ уменьшаем
   if (ps2x.Button(PSB_PAD_DOWN))
     {
     Serial.println("PSB_PAD_DOWN");
-    serv_motor1.write(SERVO_MIN);
-    serv_motor2.write(SERVO_MAX);
-  }
-
-  if (ps2x.Button(PSB_R1))
-    {
-    Serial.println("PSB_R2");
-    Serial.println(cntServ7);
+    Serial.println(cntServAccel);
     time_standstill = millis();
-    if (cntServ7 < SERVO_MAX-1) 
-    {       
-       serv_accel.write(cntServ7);
-       cntServ7++;
+    if (cntServAccel > SERVO_MIN_90+1) 
+    {
+       serv_accel.write(cntServAccel);
+       cntServAccel--;
     }
   }
 
+  // Дроссель увеливаем
+  if (ps2x.Button(PSB_PAD_LEFT))
+    {
+    Serial.println("PSB_PAD_LEFT");
+    Serial.println(cntServThrottleValve);
+    time_standstill = millis();
+    if (cntServThrottleValve < SERVO_MAX_90-1) 
+    {       
+       serv_throttle_valve.write(cntServThrottleValve);
+       cntServThrottleValve++;
+    }
+  }
+ // Дроссель уменьшаем
+  if (ps2x.Button(PSB_PAD_RIGHT))
+    {
+    Serial.println("PSB_PAD_RIGHT");
+    Serial.println(cntServThrottleValve);
+    time_standstill = millis();
+    if (cntServThrottleValve > SERVO_MIN_90+1) 
+    {
+       serv_throttle_valve.write(cntServThrottleValve);
+       cntServThrottleValve--;
+    }
+  }
+
+   // Фары вкл - выкл
   if (ps2x.Button(PSB_L1))
     {
     Serial.println("PSB_L1");
-    Serial.println(cntServ7);
     time_standstill = millis();
-    if (cntServ7 > SERVO_MIN+1) 
+    if (fLight == true) 
     {
-       serv_accel.write(cntServ7);
-       cntServ7--;
+       digitalWrite(PIN_LIGHT, LOW);
+       fLight = false;
+    } else 
+    {
+       digitalWrite(PIN_LIGHT, HIGH);
+       fLight = true;
     }
   }
 
-  
+  // Габариты вкл - выкл
+  if (ps2x.Button(PSB_R1))
+    {
+    Serial.println("PSB_R1");
+    time_standstill = millis();
+    if (fBlink == true) 
+    {
+       digitalWrite(PIN_BLINK, LOW);
+       fBlink = false;
+    } else 
+    {
+       digitalWrite(PIN_BLINK, HIGH);
+       fBlink = true;
+    }
+  }
+
+   // Габариты вкл - выкл
   if (ps2x.Button(PSB_R2))
     {
     Serial.println("PSB_R2");
-    Serial.println(cntServ8);
     time_standstill = millis();
-    if (cntServ8 < SERVO_MAX-1) 
-    {       
-       serv_throttle_valve.write(cntServ8);
-       cntServ8++;
-    }
-  }
-
-  if (ps2x.Button(PSB_L2))
-    {
-    Serial.println("PSB_L2");
-    Serial.println(cntServ8);
-    time_standstill = millis();
-    if (cntServ8 > SERVO_MIN+1) 
-    {
-       serv_throttle_valve.write(cntServ8);
-       cntServ8--;
-    }
+    digitalWrite(PIN_SOUND, HIGH);
   }
  
    // Крестовина отпущена и не запущен режим калибровки
+     if (ps2x.Button(PSB_L2) == false) {
+
+      StepRun(0, false);
+      
       if ((ps2x.Button(PSB_PAD_UP) == false) & (ps2x.Button(PSB_PAD_DOWN) == false) &
           (ps2x.Button(PSB_PAD_LEFT) == false) & (ps2x.Button(PSB_PAD_RIGHT) == false)){
-
-        StepRun(0, false);
-
         //не нажата ни одна кнопка действия
         if ((ps2x.Button(PSB_TRIANGLE) == false) & (ps2x.Button(PSB_CROSS) == false) &
             (ps2x.Button(PSB_CIRCLE) == false) & (ps2x.Button(PSB_SQUARE) == false))
         {
           ServCenter();
+          digitalWrite(PIN_SOUND, LOW);
           if (millis() - time_standstill >= TIME_STANDSTILL_MAX)  //бездействие
           {
 
@@ -305,6 +336,7 @@ void loop()
           }
         }
       }
+     }
       delay(50);
 }
 
@@ -344,12 +376,8 @@ void ServCenter()
   serv_arrow2.write(SERVO_CENTER);
   serv_motor1.write(SERVO_CENTER);
   serv_motor2.write(SERVO_CENTER);
-  cntServ1 = SERVO_CENTER;
-  cntServ2 = SERVO_CENTER;
-  cntServ3 = SERVO_CENTER;
-  cntServ4 = SERVO_CENTER;
-  cntServ5 = SERVO_CENTER;
-  cntServ6 = SERVO_CENTER;
+  cntServMotor1 = SERVO_CENTER;
+  cntServMotor2 = SERVO_CENTER;
 }
 
 void StepRun(int dir, bool en) {
