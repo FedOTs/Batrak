@@ -42,9 +42,12 @@
 #define PS2_CLK        A14
 
 //Фары, мигалки, звук
-#define PIN_LIGHT        24  // Фары
+#define PIN_START_ENGINE   48  // Зажигание
+#define PIN_BACK_LIGHT   49  // Фара заднего хода
+#define PIN_SOUND        50  // Звуковой сигнал
+#define PIN_LIGHT        51  // Фары
 #define PIN_BLINK        52  // Габариты
-#define PIN_SOUND        26  // Звуковой сигнал
+
 
 //время в миллисекундах
 #define TIME_STANDSTILL_MAX 30000 //через которое робот перейдёт в режим бездействия
@@ -90,6 +93,7 @@ void setup() {
   digitalWrite(STEP_PUL_EN, HIGH);
   digitalWrite(STEP_DIR, HIGH);
   digitalWrite(STEP_ENA, LOW);
+  digitalWrite(PIN_START_ENGINE, LOW);
   Serial.begin(57600);
   delay(300);
   //установка выводов и настроек: GamePad(clock, command, attention, data, Pressures?, Rumble?) проверка ошибок
@@ -206,6 +210,7 @@ void loop()
            serv_motor2.write(cntServMotor2);
            cntServMotor2--;
         }
+        digitalWrite(PIN_BACK_LIGHT, HIGH);
       } 
 
       if (nJoyY > 0) {
@@ -312,6 +317,13 @@ void loop()
     time_standstill = millis();
     digitalWrite(PIN_SOUND, HIGH);
   }
+
+  if(ps2x.Button(PSB_START)) 
+  {
+     Serial.println("PSB_START");
+     time_standstill = millis();
+     digitalWrite(PIN_START_ENGINE, HIGH);
+  }
  
    // Крестовина отпущена и не запущен режим калибровки
      if (ps2x.Button(PSB_L2) == false) {
@@ -326,6 +338,8 @@ void loop()
         {
           ServCenter();
           digitalWrite(PIN_SOUND, LOW);
+          digitalWrite(PIN_BACK_LIGHT, LOW);
+          digitalWrite(PIN_START_ENGINE, LOW);
           if (millis() - time_standstill >= TIME_STANDSTILL_MAX)  //бездействие
           {
 
