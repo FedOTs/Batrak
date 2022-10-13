@@ -52,7 +52,7 @@
 //время в миллисекундах
 #define TIME_STANDSTILL_MAX 30000 //через которое робот перейдёт в режим бездействия
 #define TIME_STANDSTILLLONG_MAX 30000 //промежуток времени, через которое робот напоминает о бездействии
-#define TIME_PAUSE_MAX  5000  //на ожидание подтверждения (режим калибровки) 
+#define TIME_PAUSE_MAX  500  //на ожидание подтверждения (режим калибровки) 
 
 //Режимы работы джойстика (раскомментировать нужное)
 //- pressures = аналоговое считывание нажатия кнопок
@@ -84,16 +84,26 @@ unsigned long time_standstill, time_pause, time_standstill_long;
 unsigned int cntServMotor1,cntServMotor2,cntServAccel,cntServThrottleValve; // Счетчики для серв
 int stWheelDir, stWheelMove;  
 int nJoyX, nJoyY;  // Счетчики для аналогов джойстика
-bool fLight, fBlink; // Флаги для хранения состояния фар и габаритов
+bool fLight, fBlink, fSound, fStart; // Флаги для хранения состояния фар и габаритов
 
 void setup() { 
   pinMode (STEP_PUL_EN, OUTPUT);
   pinMode (STEP_DIR, OUTPUT);
   pinMode (STEP_ENA, OUTPUT);
+  pinMode (PIN_START_ENGINE, OUTPUT);
+  pinMode (PIN_BACK_LIGHT, OUTPUT);
+  pinMode (PIN_SOUND, OUTPUT);
+  pinMode (PIN_LIGHT, OUTPUT);
+  pinMode (PIN_BLINK, OUTPUT);
   digitalWrite(STEP_PUL_EN, HIGH);
   digitalWrite(STEP_DIR, HIGH);
   digitalWrite(STEP_ENA, LOW);
-  digitalWrite(PIN_START_ENGINE, LOW);
+  digitalWrite(PIN_START_ENGINE, HIGH);
+  digitalWrite(PIN_SOUND, HIGH);
+  digitalWrite(PIN_BACK_LIGHT, HIGH);
+  //digitalWrite(PIN_BLINK, HIGH);
+  digitalWrite(PIN_LIGHT, HIGH);
+  digitalWrite(PIN_BLINK, LOW);
   Serial.begin(57600);
   delay(300);
   //установка выводов и настроек: GamePad(clock, command, attention, data, Pressures?, Rumble?) проверка ошибок
@@ -136,6 +146,8 @@ void setup() {
   // Выключенные фары и габариты
   fLight = false;
   fBlink = false;
+  fSound = false;
+  fStart = false;
   
   time_standstill = millis();
 }
@@ -144,6 +156,9 @@ void loop()
 {
   //Опрос джойстика
   ps2x.read_gamepad(false, vibrate); //считывание данных с джойстика и установка скорости вибрации
+
+
+  if(ps2x.Button(PSB_L2)) {
 
  // Треугольник нажат (ковш вверх)
   if (ps2x.Button(PSB_TRIANGLE))
@@ -182,51 +197,67 @@ void loop()
   }
 
   // Если нажата L2 только тогда слушаем аналоговый левый джойстик
-  if(ps2x.Button(PSB_L2)) {
+  
 
-      nJoyX = ps2x.Analog(PSS_LX); // read x-joystick
-      nJoyY = ps2x.Analog(PSS_LY); // read y-joystick
-
-      if (nJoyX < 0) 
-        {
-           StepRun(1, true);
-           time_standstill = millis();
-        }
-      if (nJoyX > 0)
-        {
-          StepRun(-1, true);
-          time_standstill = millis();
-        }
-
-     if (nJoyY < 0) {
+    nJoyX = ps2x.Analog(PSS_LX); // read x-joystick
+    nJoyY = ps2x.Analog(PSS_LY); // read y-joystick
+    
+    if (nJoyX < 125) 
+      {
+         StepRun(1, true);
+         time_standstill = millis();
+      }
+    if (nJoyX > 130)
+      {
+        StepRun(-1, true);
         time_standstill = millis();
-        if (cntServMotor1 < SERVO_MAX_90-1) 
-        {       
-           serv_motor1.write(cntServMotor1);
-           cntServMotor1++;
-        }
-        if (cntServMotor2 > SERVO_MIN_90+1) 
-        {
-           serv_motor2.write(cntServMotor2);
-           cntServMotor2--;
-        }
-        digitalWrite(PIN_BACK_LIGHT, HIGH);
-      } 
+      }
 
-      if (nJoyY > 0) {
-        time_standstill = millis();
-        if (cntServMotor2 < SERVO_MAX_90-1) 
-        {       
-           serv_bucket2.write(cntServMotor2);
-           cntServMotor2++;
-        }
-        if (cntServMotor1 > SERVO_MIN_90+1) 
-        {
-           serv_bucket1.write(cntServMotor1);
-           cntServMotor1--;
-        }
-      } 
-  }
+   if ((nJoyX > 125) & (nJoyX < 130)) {
+        StepRun(0, false);
+       // time_standstill = millis();
+    }
+   if (nJoyY < 125) {
+      time_standstill = millis();
+     /** if (cntServMotor1 < SERVO_MAX_90-1) 
+      {       
+         serv_motor1.write(cntServMotor1);
+         cntServMotor1++;
+      }
+      if (cntServMotor2 > SERVO_MIN_90+1) 
+      {
+         serv_motor2.write(cntServMotor2);
+         cntServMotor2--;
+      }*/
+
+      serv_motor1.write(SERVO_MAX_90);
+      serv_motor2.write(SERVO_MIN_90);
+    } 
+
+    if (nJoyY > 130) {
+      time_standstill = millis();/*
+      if (cntServMotor2 < SERVO_MAX_90-1) 
+      {       
+         serv_motor2.write(cntServMotor2);
+         cntServMotor2++;
+      }
+      if (cntServMotor1 > SERVO_MIN_90+1) 
+      {
+         serv_motor1.write(cntServMotor1);
+         cntServMotor1--;
+      }
+      */
+      digitalWrite(PIN_BACK_LIGHT, LOW);
+      serv_motor2.write(SERVO_MAX_90);
+      serv_motor1.write(SERVO_MIN_90);
+    } 
+
+    if ((nJoyY) > 125 & (nJoyY) < 130) {
+      ServCenter();     
+      digitalWrite(PIN_BACK_LIGHT, HIGH);
+      // time_standstill = millis(); 
+    }
+ 
   
  // Газ увеличиваем
   if (ps2x.Button(PSB_PAD_UP))
@@ -279,7 +310,7 @@ void loop()
   }
 
    // Фары вкл - выкл
-  if (ps2x.Button(PSB_L1))
+  if (ps2x.ButtonPressed(PSB_L1))
     {
     Serial.println("PSB_L1");
     time_standstill = millis();
@@ -294,8 +325,8 @@ void loop()
     }
   }
 
-  // Габариты вкл - выкл
-  if (ps2x.Button(PSB_R1))
+ /* // Габариты вкл - выкл
+  if (ps2x.ButtonPressed(PSB_R1))
     {
     Serial.println("PSB_R1");
     time_standstill = millis();
@@ -309,40 +340,80 @@ void loop()
        fBlink = true;
     }
   }
-
-   // Габариты вкл - выкл
+*/
+   // Звук
   if (ps2x.Button(PSB_R2))
-    {
+  {  
     Serial.println("PSB_R2");
-    time_standstill = millis();
-    digitalWrite(PIN_SOUND, HIGH);
+      time_standstill = millis();
+    if (fSound == false) {
+      digitalWrite(PIN_SOUND, LOW);
+      fSound = true;
+    }
   }
 
+ // Заводим
   if(ps2x.Button(PSB_START)) 
   {
      Serial.println("PSB_START");
      time_standstill = millis();
-     digitalWrite(PIN_START_ENGINE, HIGH);
+     if (fStart == false) {
+       digitalWrite(PIN_START_ENGINE, LOW);
+       fStart = true;
+     }
   }
- 
-   // Крестовина отпущена и не запущен режим калибровки
-     if (ps2x.Button(PSB_L2) == false) {
-
+  }
+  else {
+    //time_standstill = millis();
+      digitalWrite(PIN_SOUND, LOW);
       StepRun(0, false);
-      
+      ServCenterMotor();
+    }
+   // Крестовина отпущена и не запущен режим калибровки
+
+   Serial.print(millis());
+   Serial.print("   ");
+   Serial.println(time_standstill);
+
+  if (fStart == true & ps2x.Button(PSB_START) == false) {
+    if (millis() - time_standstill >= TIME_PAUSE_MAX) {
+        fStart = false;
+        digitalWrite(PIN_START_ENGINE, HIGH);
+      }      
+    }  
+
+  if (fSound == true & ps2x.Button(PSB_R2) == false) {
+    if (millis() - time_standstill >= TIME_PAUSE_MAX) {
+        fSound = false;
+        digitalWrite(PIN_SOUND, HIGH);
+      }      
+    }  
+
+   if ((ps2x.Button(PSB_L2) == false)) {
+    if ((nJoyX > 125) & (nJoyX < 130) & (nJoyY > 125) & (nJoyY < 130)) {
+          StepRun(0, false);
+          ServCenterMotor();
+          digitalWrite(PIN_BACK_LIGHT, HIGH);
+    }
+     
       if ((ps2x.Button(PSB_PAD_UP) == false) & (ps2x.Button(PSB_PAD_DOWN) == false) &
           (ps2x.Button(PSB_PAD_LEFT) == false) & (ps2x.Button(PSB_PAD_RIGHT) == false)){
         //не нажата ни одна кнопка действия
         if ((ps2x.Button(PSB_TRIANGLE) == false) & (ps2x.Button(PSB_CROSS) == false) &
-            (ps2x.Button(PSB_CIRCLE) == false) & (ps2x.Button(PSB_SQUARE) == false))
+            (ps2x.Button(PSB_CIRCLE) == false) & (ps2x.Button(PSB_START) == false) &
+            (ps2x.Button(PSB_R2) == false)  & (ps2x.Button(PSB_L1) == false) & (ps2x.Button(PSB_R1) == false))
         {
           ServCenter();
-          digitalWrite(PIN_SOUND, LOW);
-          digitalWrite(PIN_BACK_LIGHT, LOW);
-          digitalWrite(PIN_START_ENGINE, LOW);
+          digitalWrite(PIN_SOUND, HIGH);
+          digitalWrite(PIN_BACK_LIGHT, HIGH);
+          digitalWrite(PIN_START_ENGINE, HIGH);
           if (millis() - time_standstill >= TIME_STANDSTILL_MAX)  //бездействие
           {
-
+            digitalWrite(PIN_SOUND, HIGH);
+            digitalWrite(PIN_BACK_LIGHT, HIGH);
+            digitalWrite(PIN_START_ENGINE, HIGH);
+            digitalWrite(PIN_BACK_LIGHT, HIGH);
+          
             if (millis() - time_standstill_long >= TIME_STANDSTILLLONG_MAX) //напоминание о бездействии
             {
               time_standstill_long = millis();
@@ -390,9 +461,16 @@ void ServCenter()
   serv_arrow2.write(SERVO_CENTER);
   serv_motor1.write(SERVO_CENTER);
   serv_motor2.write(SERVO_CENTER);
+}
+
+void ServCenterMotor()
+{
+  serv_motor1.write(SERVO_CENTER);
+  serv_motor2.write(SERVO_CENTER);
   cntServMotor1 = SERVO_CENTER;
   cntServMotor2 = SERVO_CENTER;
 }
+
 
 void StepRun(int dir, bool en) {
   if (en == true) {
